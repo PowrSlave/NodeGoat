@@ -1,16 +1,45 @@
-name: vorpal-reviewdog
-on: [pull_request]
+name: Vorpal PR Checks
+
+on:
+  pull_request:
+    # run on PRs into default branch; tweak as needed
+    branches:
+      - master
+      - main
+
+permissions:
+  contents: read
+  pull-requests: write  # required so reviewdog/Vorpal can annotate PRs
+
 jobs:
   vorpal:
     runs-on: ubuntu-latest
+
     steps:
       - uses: actions/checkout@v4
-      - name: Vorpal with reviewdog
-        uses: checkmarx/vorpal-reviewdog-github-action@v1.0.0
+
+      # Get the list of files changed in this PR (added/modified/renamed)
+      - name: Get changed files
+        id: changed
+        uses: tj-actions/changed-files@v46
         with:
-          source_path: testdata/samples/FileA.java,testdata/samples/FileB.java
-          filter_mode: file
-          github_token: ${{ secrets.github_token }}
-          reporter: github-pr-check
+          separator: ','
+
+      # Run Vorpal + reviewdog only if there are changed files
+      - name: Vorpal (inline PR comments on changed lines)
+        if: ${{ steps.changed.outputs.all_changed_files != '' }}
+        uses: Checkmarx/vorpal-reviewdog-github-action@v1.2.0
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          # Comma-separated list from changed-files (fast, only what changed)
+          source_path: "${{ steps.changed.outputs.all_changed_files }}"
+          # Inline comments on the diff; use github-pr-check for Checks tab
+          reporter: github-pr-review
+          # Only annotate lines actually added/changed in the diff
+          filter_mode: added            # options: added | diff_context | file | nofilter
+          # Turn on to hard-gate merges; set false if you only want comments
+          fail_on_error: true
+          # Optional: treat findings at this level as errors
           level: error
-          fail_on_error: false
+          # Optional: reduce noise by ignoring junk dirs if they appear in the diff
+          folders_to_ignore: node_modules,dist,build,.next,.out,.venv,coverage
